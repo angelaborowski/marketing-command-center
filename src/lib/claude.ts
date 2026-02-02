@@ -16,6 +16,7 @@ import {
   type ExamLevel,
   type ContentPillar,
 } from './prompts';
+import { CONTENT_ASSISTANT_PROMPT } from './assistantPrompts';
 
 // ============================================================================
 // Types
@@ -80,7 +81,7 @@ export interface HashtagResponse {
 export interface ContentGenerationParams {
   viralFormulas?: ViralFormula[];
   subjects: string[];
-  examLevel: ExamLevel;
+  examLevels: ExamLevel[];
   platforms: Platform[];
   pillars?: ContentPillar[];
 }
@@ -243,7 +244,7 @@ export async function generateWeeklyContent(
   const {
     viralFormulas = DEFAULT_VIRAL_FORMULAS,
     subjects,
-    examLevel,
+    examLevels,
     platforms,
     pillars = [
       'Exam Hacks',
@@ -266,7 +267,7 @@ export async function generateWeeklyContent(
   const prompt = fillPromptTemplate(CONTENT_GENERATION_PROMPT, {
     viralFormulas: formulasText,
     subjects: subjects,
-    examLevel: examLevel,
+    examLevels: examLevels,
     platforms: platforms,
     pillars: pillars,
   });
@@ -277,7 +278,7 @@ export async function generateWeeklyContent(
   response.weeklyContent = response.weeklyContent.map((item, index) => ({
     ...item,
     id: item.id || `content-${Date.now()}-${index}`,
-    level: item.level || examLevel,
+    level: item.level || examLevels[0],
   }));
 
   return response;
@@ -504,6 +505,66 @@ export function validateContent(
     valid: warnings.length === 0,
     warnings,
   };
+}
+
+// ============================================================================
+// Content Assistant Chat
+// ============================================================================
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * Chat with the content assistant for quick optimization help
+ */
+export async function chatWithAssistant(
+  message: string,
+  history: ChatMessage[] = []
+): Promise<string> {
+  const apiKey = getApiKey();
+
+  // Build messages array with history
+  const messages = [
+    ...history.map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    })),
+    { role: 'user' as const, content: message },
+  ];
+
+  const response = await fetch(CLAUDE_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': API_VERSION,
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 2048,
+      system: CONTENT_ASSISTANT_PROMPT,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error?.message || `API request failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const textContent = data.content?.find(
+    (block: { type: string }) => block.type === 'text'
+  );
+
+  if (!textContent?.text) {
+    throw new Error('No response from assistant');
+  }
+
+  return textContent.text;
 }
 
 // ============================================================================

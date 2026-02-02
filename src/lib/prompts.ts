@@ -50,9 +50,21 @@ VIRAL FORMULAS TO APPLY:
 
 CONTENT PARAMETERS:
 - Subjects: {subjects}
-- Exam Level: {examLevel}
+- Exam Levels: {examLevels}
 - Target Platforms: {platforms}
 - Content Pillars: {pillars}
+
+EXAM LEVEL DISTRIBUTION (CRITICAL):
+- Distribute posts EQUALLY across all specified exam levels
+- Each post MUST be written specifically for its assigned level
+- The "level" field in the JSON MUST accurately reflect the content's complexity
+
+LEVEL-SPECIFIC CONTENT GUIDELINES:
+- GCSE (Ages 14-16): Use accessible language, focus on foundational concepts, relatable examples for teenagers, manageable exam tips
+- A-Level (Ages 16-18): More sophisticated vocabulary, deeper analysis, university prep angle, advanced techniques, higher complexity
+- IB: International perspective, critical thinking focus, rigorous analytical approach, global examples
+
+IMPORTANT: Do NOT mix up levels. A GCSE post must use GCSE-appropriate language and concepts. An A-Level post must reflect A-Level depth and complexity.
 
 VOLUME REQUIREMENTS:
 1. Generate 7 days of content (Monday-Sunday)

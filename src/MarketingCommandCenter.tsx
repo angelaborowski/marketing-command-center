@@ -6,6 +6,7 @@ import { analyzeContentGaps } from './lib/contentAnalysis';
 import { useGoogleCalendar } from './useGoogleCalendar';
 import { buildFilmingEvent, buildPostingEvent } from './lib/calendarHelpers';
 import ContentGapPanel from './components/ContentGapPanel';
+import ContentAssistant from './components/ContentAssistant';
 import type { SchedulingSuggestion, SchedulingAnalysis, ContentGap, ContentGapAnalysis, CalendarSyncSettings } from './types';
 import { DEFAULT_CALENDAR_SETTINGS } from './types';
 
@@ -532,7 +533,7 @@ export default function MarketingCommandCenter() {
       const response = await generateWeeklyContent({
         viralFormulas: viralFormulas.length > 0 ? viralFormulas : undefined,
         subjects: settings.subjects,
-        examLevel: settings.levels[0] || 'GCSE',
+        examLevels: settings.levels.length > 0 ? settings.levels : ['GCSE'],
         platforms: settings.platforms.map(p => platformMap[p] || p) as any[],
       });
 
@@ -1227,6 +1228,9 @@ export default function MarketingCommandCenter() {
           onClose={() => setGapToFill(null)}
         />
       )}
+
+      {/* Content Assistant Chatbot */}
+      <ContentAssistant />
     </div>
   );
 }
