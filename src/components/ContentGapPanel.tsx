@@ -19,7 +19,7 @@ function BalanceMeter({ score }: { score: number }) {
 
   const getScoreColor = (score: number): string => {
     if (score >= 80) return '#10b981'; // green
-    if (score >= 60) return '#3b82f6'; // blue
+    if (score >= 60) return '#211d1d'; // blue
     if (score >= 40) return '#f59e0b'; // yellow
     return '#ef4444'; // red
   };
@@ -153,7 +153,7 @@ function GapCard({ gap, onFillGap }: { gap: ContentGap; onFillGap: (gap: Content
         {/* Fill Gap button */}
         <button
           onClick={() => onFillGap(gap)}
-          className="shrink-0 px-3 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white text-[11px] font-medium rounded-lg transition-colors"
+          className="shrink-0 px-3 py-2 bg-[#211d1d] hover:bg-[#352f2f] text-white text-[11px] font-medium rounded-lg transition-colors"
         >
           Fill Gap
         </button>
@@ -262,7 +262,7 @@ export default function ContentGapPanel({ isOpen, onClose, analysis, onFillGap }
             <BalanceMeter score={balanceScore} />
             <div className="flex-1">
               <h3 className="text-[14px] font-semibold text-[#1a1a1a] mb-2 flex items-center gap-2">
-                <TrendingUp size={16} className="text-[#3b82f6]" />
+                <TrendingUp size={16} className="text-[#211d1d]" />
                 Balance Score
               </h3>
               <p className="text-[12px] text-[#6b7280] mb-3">

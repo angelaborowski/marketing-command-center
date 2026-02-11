@@ -112,7 +112,7 @@ export default function PerformanceInput({ isOpen, onClose, item, onSave }: Perf
               value={views}
               onChange={e => setViews(e.target.value)}
               placeholder="e.g., 10,000"
-              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               autoFocus
             />
           </div>
@@ -129,7 +129,7 @@ export default function PerformanceInput({ isOpen, onClose, item, onSave }: Perf
                 value={likes}
                 onChange={e => setLikes(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               />
             </div>
             <div>
@@ -142,7 +142,7 @@ export default function PerformanceInput({ isOpen, onClose, item, onSave }: Perf
                 value={comments}
                 onChange={e => setComments(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               />
             </div>
           </div>
@@ -158,7 +158,7 @@ export default function PerformanceInput({ isOpen, onClose, item, onSave }: Perf
                 value={shares}
                 onChange={e => setShares(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               />
             </div>
             <div>
@@ -171,7 +171,7 @@ export default function PerformanceInput({ isOpen, onClose, item, onSave }: Perf
                 value={saves}
                 onChange={e => setSaves(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               />
             </div>
           </div>
@@ -215,7 +215,7 @@ export default function PerformanceInput({ isOpen, onClose, item, onSave }: Perf
           <button
             onClick={handleSave}
             disabled={parseNumber(views) === 0}
-            className="px-4 py-2 bg-[#3b82f6] text-white text-[13px] font-medium rounded-lg hover:bg-[#2563eb] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-[#211d1d] text-white text-[13px] font-medium rounded-lg hover:bg-[#352f2f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Save Metrics
           </button>

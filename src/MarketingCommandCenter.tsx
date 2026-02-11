@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Component, type ErrorInfo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext, Component, type ErrorInfo, type ReactNode } from 'react';
 import { generateWeeklyContent, type ViralFormula } from './lib/claude';
 import { fetchChannelVideos, type YouTubeVideo } from './lib/youtube';
 import { analyzeSchedule, PLATFORM_OPTIMAL_TIMES } from './lib/scheduling';
@@ -7,6 +7,13 @@ import { useGoogleCalendar } from './useGoogleCalendar';
 import { buildFilmingEvent, buildPostingEvent } from './lib/calendarHelpers';
 import ContentGapPanel from './components/ContentGapPanel';
 import ContentAssistant from './components/ContentAssistant';
+import AgentDashboard from './components/AgentDashboard';
+import AgentProgress from './components/AgentProgress';
+import AgentResults from './components/AgentResults';
+import DashboardHome from './components/DashboardHome';
+import { AuthContext } from './components/PasswordGate';
+import { useAgents } from './hooks/useAgents';
+import { useProactiveAgents } from './hooks/useProactiveAgents';
 import type { SchedulingSuggestion, SchedulingAnalysis, ContentGap, ContentGapAnalysis, CalendarSyncSettings } from './types';
 import { DEFAULT_CALENDAR_SETTINGS } from './types';
 
@@ -68,6 +75,9 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Bot,
+  Home,
+  LogOut,
 } from 'lucide-react';
 import Settings from './components/Settings';
 import PerformanceInput from './components/PerformanceInput';
@@ -89,7 +99,7 @@ import {
 } from './types';
 
 // Section type for navigation
-type Section = 'week' | 'film' | 'post';
+type Section = 'home' | 'week' | 'film' | 'post' | 'agents';
 
 // Generate unique ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -99,7 +109,7 @@ const TIME_SLOTS = ['9:00 AM', '12:00 PM', '3:00 PM', '6:00 PM', '9:00 PM'];
 
 export default function MarketingCommandCenter() {
   // Navigation state
-  const [activeSection, setActiveSection] = useState<Section>('week');
+  const [activeSection, setActiveSection] = useState<Section>('home');
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Settings state
@@ -152,6 +162,37 @@ export default function MarketingCommandCenter() {
     type: 'success' | 'error' | 'info' | null;
     message: string;
   }>({ type: null, message: '' });
+
+  // Agent system
+  const agents = useAgents(settings, contentItems, gapAnalysis, schedulingAnalysis);
+  const [showAgentResults, setShowAgentResults] = useState(false);
+
+  // Proactive agents
+  const proactive = useProactiveAgents(
+    settings,
+    contentItems,
+    agents.isRunning,
+    agents.startAgent,
+    agents.startPipeline,
+    agents.runHistory,
+  );
+
+  // Auth context for logout
+  const { logout } = useContext(AuthContext);
+
+  // Show agent results modal when a run finishes
+  const prevRunStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentStatus = agents.currentRun?.status ?? null;
+    if (
+      prevRunStatusRef.current === 'running' &&
+      currentStatus &&
+      currentStatus !== 'running'
+    ) {
+      setShowAgentResults(true);
+    }
+    prevRunStatusRef.current = currentStatus;
+  }, [agents.currentRun?.status]);
 
   // Track previous content items for auto-sync
   const prevContentItemsRef = useRef<ContentItem[]>(contentItems);
@@ -293,6 +334,10 @@ export default function MarketingCommandCenter() {
       // Cmd/Ctrl + number for section switching
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
         switch (e.key) {
+          case '0':
+            e.preventDefault();
+            setActiveSection('home');
+            break;
           case '1':
             e.preventDefault();
             setActiveSection('week');
@@ -304,6 +349,10 @@ export default function MarketingCommandCenter() {
           case '3':
             e.preventDefault();
             setActiveSection('post');
+            break;
+          case '4':
+            e.preventDefault();
+            setActiveSection('agents');
             break;
           case ',':
             e.preventDefault();
@@ -592,9 +641,11 @@ export default function MarketingCommandCenter() {
 
   // Navigation items
   const navItems = [
+    { id: 'home' as const, label: 'Home', icon: Home, shortcut: '0' },
     { id: 'week' as const, label: 'Week', icon: Calendar, shortcut: '1' },
     { id: 'film' as const, label: 'Film', icon: Video, shortcut: '2' },
     { id: 'post' as const, label: 'Post', icon: Send, shortcut: '3' },
+    { id: 'agents' as const, label: 'Agents', icon: Bot, shortcut: '4' },
   ];
 
   return (
@@ -616,7 +667,7 @@ export default function MarketingCommandCenter() {
                 onClick={() => setActiveSection(item.id)}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
                   activeSection === item.id
-                    ? 'bg-[#3b82f6] text-white'
+                    ? 'bg-[#211d1d] text-white'
                     : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#1a1a1a]'
                 }`}
               >
@@ -695,6 +746,13 @@ export default function MarketingCommandCenter() {
               ,
             </span>
           </button>
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] text-[#6b7280] hover:bg-red-50 hover:text-red-600 transition-colors mt-1"
+          >
+            <LogOut size={16} />
+            Lock
+          </button>
         </div>
       </aside>
 
@@ -704,7 +762,7 @@ export default function MarketingCommandCenter() {
         <header className="h-14 px-6 flex items-center justify-between bg-white border-b border-[#e5e7eb]">
           <div className="flex items-center gap-4">
             <h1 className="text-[15px] font-semibold text-[#1a1a1a] capitalize">
-              {activeSection === 'week' ? 'Weekly Schedule' : activeSection === 'film' ? 'To Film' : 'To Post'}
+              {activeSection === 'home' ? 'Dashboard' : activeSection === 'week' ? 'Weekly Schedule' : activeSection === 'film' ? 'To Film' : activeSection === 'post' ? 'To Post' : 'AI Agents'}
             </h1>
             {generationStatus && (
               <span className="text-[12px] text-[#6b7280] animate-pulse">
@@ -840,7 +898,7 @@ export default function MarketingCommandCenter() {
                                       </span>
                                       <button
                                         onClick={() => applySuggestion(suggestion)}
-                                        className="text-[10px] font-medium text-[#3b82f6] hover:text-[#2563eb] transition-colors"
+                                        className="text-[10px] font-medium text-[#211d1d] hover:text-[#352f2f] transition-colors"
                                       >
                                         Apply
                                       </button>
@@ -862,7 +920,7 @@ export default function MarketingCommandCenter() {
                             </span>
                             <button
                               onClick={applyAllSuggestions}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg text-[11px] font-medium transition-colors"
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#211d1d] hover:bg-[#352f2f] text-white rounded-lg text-[11px] font-medium transition-colors"
                             >
                               <Zap size={12} />
                               Apply All
@@ -901,6 +959,23 @@ export default function MarketingCommandCenter() {
 
         {/* Content area */}
         <div className="flex-1 overflow-auto p-6">
+          {/* HOME VIEW */}
+          {activeSection === 'home' && (
+            <DashboardHome
+              contentItems={contentItems}
+              settings={settings}
+              gapAnalysis={gapAnalysis}
+              schedulingAnalysis={schedulingAnalysis}
+              agentRunHistory={agents.runHistory}
+              proactiveResults={proactive.notifications}
+              isAgentRunning={agents.isRunning}
+              onNavigate={setActiveSection}
+              onGenerateWeek={generateWeek}
+              onStartPipeline={(pipelineId) => agents.startPipeline(pipelineId)}
+              onAnalyzeGaps={handleAnalyzeGaps}
+            />
+          )}
+
           {/* WEEK VIEW */}
           {activeSection === 'week' && (
             <div className="max-w-5xl mx-auto">
@@ -915,7 +990,7 @@ export default function MarketingCommandCenter() {
                       onClick={() => setSelectedDay(day)}
                       className={`flex-1 py-3 px-2 rounded-lg text-center transition-all ${
                         selectedDay === day
-                          ? 'bg-[#3b82f6] text-white'
+                          ? 'bg-[#211d1d] text-white'
                           : isBatchDay
                           ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                           : 'bg-white border border-[#e5e7eb] text-[#6b7280] hover:border-[#d1d5db]'
@@ -1027,9 +1102,9 @@ export default function MarketingCommandCenter() {
                             >
                               <button
                                 onClick={() => toggleFilmed(item.id)}
-                                className="w-5 h-5 rounded border-2 border-[#d1d5db] flex items-center justify-center hover:border-[#3b82f6] transition-colors"
+                                className="w-5 h-5 rounded border-2 border-[#d1d5db] flex items-center justify-center hover:border-[#211d1d] transition-colors"
                               >
-                                {item.filmed && <Check size={12} className="text-[#3b82f6]" />}
+                                {item.filmed && <Check size={12} className="text-[#211d1d]" />}
                               </button>
                               <div className="flex-1 min-w-0">
                                 <p className="text-[13px] text-[#1a1a1a] truncate">{item.hook}</p>
@@ -1097,9 +1172,9 @@ export default function MarketingCommandCenter() {
                         <div className="flex items-start gap-4">
                           <button
                             onClick={() => togglePosted(item.id)}
-                            className="mt-0.5 w-5 h-5 rounded border-2 border-[#d1d5db] flex items-center justify-center hover:border-[#3b82f6] transition-colors"
+                            className="mt-0.5 w-5 h-5 rounded border-2 border-[#d1d5db] flex items-center justify-center hover:border-[#211d1d] transition-colors"
                           >
-                            {item.posted && <Check size={12} className="text-[#3b82f6]" />}
+                            {item.posted && <Check size={12} className="text-[#211d1d]" />}
                           </button>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
@@ -1124,7 +1199,7 @@ export default function MarketingCommandCenter() {
                               <div className="flex items-center gap-1 flex-wrap">
                                 <Hash size={12} className="text-[#9ca3af]" />
                                 {item.hashtags.map((tag, i) => (
-                                  <span key={i} className="text-[11px] text-[#3b82f6]">#{tag}</span>
+                                  <span key={i} className="text-[11px] text-[#211d1d]">#{tag}</span>
                                 ))}
                               </div>
                             )}
@@ -1133,7 +1208,7 @@ export default function MarketingCommandCenter() {
                                 const text = `${item.hook}\n\n${item.caption}\n\n${item.hashtags.map(t => `#${t}`).join(' ')}`;
                                 navigator.clipboard.writeText(text);
                               }}
-                              className="mt-3 flex items-center gap-1.5 text-[11px] text-[#6b7280] hover:text-[#3b82f6] transition-colors"
+                              className="mt-3 flex items-center gap-1.5 text-[11px] text-[#6b7280] hover:text-[#211d1d] transition-colors"
                             >
                               <Copy size={12} />
                               Copy to clipboard
@@ -1146,6 +1221,19 @@ export default function MarketingCommandCenter() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* AGENTS VIEW */}
+          {activeSection === 'agents' && (
+            <AgentDashboard
+              currentRun={agents.currentRun}
+              isRunning={agents.isRunning}
+              runHistory={agents.runHistory}
+              onStartPipeline={(pipelineId) => agents.startPipeline(pipelineId)}
+              onStartAgent={(agentId, input) => agents.startAgent(agentId, input)}
+              onCancelRun={agents.cancelRun}
+              settings={settings}
+            />
           )}
         </div>
       </main>
@@ -1231,6 +1319,30 @@ export default function MarketingCommandCenter() {
 
       {/* Content Assistant Chatbot */}
       <ContentAssistant />
+
+      {/* Agent Progress Panel - visible during runs */}
+      {agents.isRunning && agents.currentRun && (
+        <div className="fixed top-4 right-4 z-50 w-96">
+          <AgentProgress
+            run={agents.currentRun}
+            onCancel={agents.cancelRun}
+          />
+        </div>
+      )}
+
+      {/* Agent Results Modal - shown when a run completes */}
+      {agents.currentRun && agents.currentRun.status !== 'running' && showAgentResults && (
+        <AgentResults
+          isOpen={showAgentResults}
+          onClose={() => setShowAgentResults(false)}
+          run={agents.currentRun}
+          onApproveContent={(items) => {
+            const approved = agents.approveContent(items);
+            setContentItems(prev => [...prev, ...approved]);
+            setShowAgentResults(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1311,7 +1423,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
               value={hook}
               onChange={e => setHook(e.target.value)}
               placeholder="the trick your teacher never told you about..."
-              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               autoFocus
             />
           </div>
@@ -1325,7 +1437,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
               <select
                 value={day}
                 onChange={e => setDay(e.target.value)}
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               >
                 {DAYS.map(d => (
                   <option key={d} value={d}>{d}</option>
@@ -1339,7 +1451,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
               <select
                 value={time}
                 onChange={e => setTime(e.target.value)}
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               >
                 {TIME_SLOTS.map(t => (
                   <option key={t} value={t}>{t}</option>
@@ -1356,7 +1468,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
             <select
               value={platform}
               onChange={e => setPlatform(e.target.value as Platform)}
-              className={`w-full px-3 py-2.5 border rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all ${
+              className={`w-full px-3 py-2.5 border rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all ${
                 gap.type === 'platform' ? 'bg-amber-50 border-amber-200' : 'bg-[#f9fafb] border-[#e5e7eb]'
               }`}
             >
@@ -1380,7 +1492,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
                     pillar === p.id
                       ? gap.type === 'pillar' && gap.value === p.id
                         ? 'bg-amber-500 text-white border-amber-500'
-                        : 'bg-[#3b82f6] text-white border-[#3b82f6]'
+                        : 'bg-[#211d1d] text-white border-[#211d1d]'
                       : 'bg-[#f9fafb] text-[#6b7280] border-[#e5e7eb] hover:border-[#d1d5db]'
                   }`}
                 >
@@ -1399,7 +1511,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
               <select
                 value={level}
                 onChange={e => setLevel(e.target.value as ExamLevel)}
-                className={`w-full px-3 py-2.5 border rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all ${
+                className={`w-full px-3 py-2.5 border rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all ${
                   gap.type === 'level' ? 'bg-amber-50 border-amber-200' : 'bg-[#f9fafb] border-[#e5e7eb]'
                 }`}
               >
@@ -1415,7 +1527,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
               <select
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
-                className={`w-full px-3 py-2.5 border rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all ${
+                className={`w-full px-3 py-2.5 border rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all ${
                   gap.type === 'subject' ? 'bg-amber-50 border-amber-200' : 'bg-[#f9fafb] border-[#e5e7eb]'
                 }`}
               >
@@ -1436,7 +1548,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
               value={topic}
               onChange={e => setTopic(e.target.value)}
               placeholder="e.g., Photosynthesis, Quadratic Equations..."
-              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
             />
           </div>
         </div>
@@ -1511,7 +1623,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
         onClick={() => setIsOpen(true)}
         className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-medium transition-colors ${
           variant === 'primary'
-            ? 'bg-[#3b82f6] text-white hover:bg-[#2563eb]'
+            ? 'bg-[#211d1d] text-white hover:bg-[#352f2f]'
             : 'bg-[#f3f4f6] text-[#6b7280] hover:bg-[#e5e7eb] hover:text-[#1a1a1a]'
         }`}
       >
@@ -1538,7 +1650,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
               value={hook}
               onChange={e => setHook(e.target.value)}
               placeholder="the trick your teacher never told you about..."
-              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               autoFocus
             />
           </div>
@@ -1552,7 +1664,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
               <select
                 value={platform}
                 onChange={e => setPlatform(e.target.value as Platform)}
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               >
                 {(Object.keys(PLATFORMS) as Platform[]).map(p => (
                   <option key={p} value={p}>{PLATFORMS[p].name}</option>
@@ -1566,7 +1678,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
               <select
                 value={time}
                 onChange={e => setTime(e.target.value)}
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               >
                 {TIME_SLOTS.map(t => (
                   <option key={t} value={t}>{t}</option>
@@ -1587,7 +1699,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
                   onClick={() => setPillar(p.id)}
                   className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all ${
                     pillar === p.id
-                      ? 'bg-[#3b82f6] text-white border-[#3b82f6]'
+                      ? 'bg-[#211d1d] text-white border-[#211d1d]'
                       : 'bg-[#f9fafb] text-[#6b7280] border-[#e5e7eb] hover:border-[#d1d5db]'
                   }`}
                 >
@@ -1606,7 +1718,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
               <select
                 value={level}
                 onChange={e => setLevel(e.target.value as ExamLevel)}
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               >
                 {(['GCSE', 'A-Level', 'IB'] as ExamLevel[]).map(l => (
                   <option key={l} value={l}>{l}</option>
@@ -1620,7 +1732,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
               <select
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
-                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
               >
                 {settings.subjects.map(s => (
                   <option key={s} value={s}>{s}</option>
@@ -1639,7 +1751,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
               value={topic}
               onChange={e => setTopic(e.target.value)}
               placeholder="e.g., Photosynthesis, Quadratic Equations..."
-              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+              className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
             />
           </div>
         </div>
@@ -1655,7 +1767,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
           <button
             onClick={handleAdd}
             disabled={!hook.trim()}
-            className="flex items-center gap-2 px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] disabled:bg-[#e5e7eb] disabled:text-[#9ca3af] text-white rounded-lg text-[12px] font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-[#211d1d] hover:bg-[#352f2f] disabled:bg-[#e5e7eb] disabled:text-[#9ca3af] text-white rounded-lg text-[12px] font-medium transition-colors"
           >
             <Sparkles size={14} />
             Add Content
@@ -1775,7 +1887,7 @@ function ContentItemRow({
             {/* Pillar tag */}
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-[#9ca3af] uppercase tracking-wider">Pillar:</span>
-              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#3b82f6]/10 text-[#3b82f6]">
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#211d1d]/10 text-[#211d1d]">
                 {PILLARS.find(p => p.id === item.pillar)?.name}
               </span>
             </div>
@@ -1787,7 +1899,7 @@ function ContentItemRow({
                 {!editingCaption && (
                   <button
                     onClick={() => setEditingCaption(true)}
-                    className="text-[10px] text-[#3b82f6] hover:underline"
+                    className="text-[10px] text-[#211d1d] hover:underline"
                   >
                     Edit
                   </button>
@@ -1799,7 +1911,7 @@ function ContentItemRow({
                     value={caption}
                     onChange={e => setCaption(e.target.value)}
                     placeholder="Write your caption here..."
-                    className="w-full px-3 py-2 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[12px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all resize-none"
+                    className="w-full px-3 py-2 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[12px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all resize-none"
                     rows={3}
                   />
                   <input
@@ -1807,12 +1919,12 @@ function ContentItemRow({
                     value={hashtags}
                     onChange={e => setHashtags(e.target.value)}
                     placeholder="Hashtags (comma-separated)"
-                    className="w-full px-3 py-2 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[12px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
+                    className="w-full px-3 py-2 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[12px] text-[#1a1a1a] placeholder:text-[#9ca3af] focus:border-[#211d1d] focus:ring-2 focus:ring-[#211d1d]/20 transition-all"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={handleSaveCaption}
-                      className="px-3 py-1.5 bg-[#3b82f6] text-white rounded text-[11px] font-medium hover:bg-[#2563eb] transition-colors"
+                      className="px-3 py-1.5 bg-[#211d1d] text-white rounded text-[11px] font-medium hover:bg-[#352f2f] transition-colors"
                     >
                       Save
                     </button>
@@ -1838,7 +1950,7 @@ function ContentItemRow({
                   {item.hashtags.length > 0 && (
                     <div className="flex items-center gap-1 mt-2 flex-wrap">
                       {item.hashtags.map((tag, i) => (
-                        <span key={i} className="text-[11px] text-[#3b82f6]">#{tag}</span>
+                        <span key={i} className="text-[11px] text-[#211d1d]">#{tag}</span>
                       ))}
                     </div>
                   )}
@@ -1853,7 +1965,7 @@ function ContentItemRow({
                   const text = `${item.hook}\n\n${item.caption}\n\n${item.hashtags.map(t => `#${t}`).join(' ')}`;
                   navigator.clipboard.writeText(text);
                 }}
-                className="flex items-center gap-1.5 text-[11px] text-[#6b7280] hover:text-[#3b82f6] transition-colors"
+                className="flex items-center gap-1.5 text-[11px] text-[#6b7280] hover:text-[#211d1d] transition-colors"
               >
                 <Copy size={12} />
                 Copy all
