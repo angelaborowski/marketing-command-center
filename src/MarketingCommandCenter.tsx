@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useContext, Component, type ErrorInfo, type ReactNode } from 'react';
-import { generateWeeklyContent, type ViralFormula } from './lib/claude';
-import { fetchChannelVideos, type YouTubeVideo } from './lib/youtube';
 import { analyzeSchedule, PLATFORM_OPTIMAL_TIMES } from './lib/scheduling';
 import { analyzeContentGaps } from './lib/contentAnalysis';
 import { useGoogleCalendar } from './useGoogleCalendar';
+import { useLinkedIn } from './useLinkedIn';
 import { buildFilmingEvent, buildPostingEvent } from './lib/calendarHelpers';
 import ContentGapPanel from './components/ContentGapPanel';
 import ContentAssistant from './components/ContentAssistant';
@@ -11,8 +10,12 @@ import AgentDashboard from './components/AgentDashboard';
 import AgentProgress from './components/AgentProgress';
 import AgentResults from './components/AgentResults';
 import DashboardHome from './components/DashboardHome';
+import FilmView from './components/FilmView';
+import TextQueue from './components/TextQueue';
+import WeeklyCheckIn from './components/WeeklyCheckIn';
 import { AuthContext } from './components/PasswordGate';
 import { useAgents } from './hooks/useAgents';
+import { useGoals } from './hooks/useGoals';
 import { useProactiveAgents } from './hooks/useProactiveAgents';
 import type { SchedulingSuggestion, SchedulingAnalysis, ContentGap, ContentGapAnalysis, CalendarSyncSettings } from './types';
 import { DEFAULT_CALENDAR_SETTINGS } from './types';
@@ -64,6 +67,7 @@ import {
   Trash2,
   Copy,
   Film,
+  FileText,
   Clock,
   Hash,
   TrendingUp,
@@ -78,6 +82,7 @@ import {
   Bot,
   Home,
   LogOut,
+  Linkedin,
 } from 'lucide-react';
 import Settings from './components/Settings';
 import PerformanceInput from './components/PerformanceInput';
@@ -92,6 +97,7 @@ import type {
 } from './types';
 import {
   PLATFORMS,
+  PLATFORM_CONTENT_TYPES,
   PILLARS,
   DAYS,
   DEFAULT_SETTINGS,
@@ -99,7 +105,7 @@ import {
 } from './types';
 
 // Section type for navigation
-type Section = 'home' | 'week' | 'film' | 'post' | 'agents';
+type Section = 'home' | 'week' | 'shotlist' | 'textqueue' | 'post' | 'agents';
 
 // Generate unique ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -128,12 +134,6 @@ export default function MarketingCommandCenter() {
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string>(DAYS[0]);
 
-  // Generation state
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationStatus, setGenerationStatus] = useState<string>('');
-  const [extractedFormulas, setExtractedFormulas] = useState<ViralFormula[]>([]);
-  const [showFormulasPanel, setShowFormulasPanel] = useState(false);
-
   // Performance tracking state
   const [performanceModalItem, setPerformanceModalItem] = useState<ContentItem | null>(null);
 
@@ -158,6 +158,9 @@ export default function MarketingCommandCenter() {
     deleteEvent,
   } = useGoogleCalendar();
 
+  // LinkedIn auto-post
+  const linkedin = useLinkedIn();
+
   const [calendarSyncStatus, setCalendarSyncStatus] = useState<{
     type: 'success' | 'error' | 'info' | null;
     message: string;
@@ -176,6 +179,28 @@ export default function MarketingCommandCenter() {
     agents.startPipeline,
     agents.runHistory,
   );
+
+  // Goals system
+  const {
+    goals,
+    updateGoals,
+    snapshots,
+    addSnapshot,
+    accountability,
+    growthMetrics,
+    isPendingCheckIn,
+    dismissCheckIn,
+    postingScore,
+  } = useGoals(contentItems);
+
+  const [showCheckIn, setShowCheckIn] = useState(false);
+
+  // Show check-in modal automatically when pending
+  useEffect(() => {
+    if (isPendingCheckIn) {
+      setShowCheckIn(true);
+    }
+  }, [isPendingCheckIn]);
 
   // Auth context for logout
   const { logout } = useContext(AuthContext);
@@ -344,13 +369,17 @@ export default function MarketingCommandCenter() {
             break;
           case '2':
             e.preventDefault();
-            setActiveSection('film');
+            setActiveSection('shotlist');
             break;
           case '3':
             e.preventDefault();
-            setActiveSection('post');
+            setActiveSection('textqueue');
             break;
           case '4':
+            e.preventDefault();
+            setActiveSection('post');
+            break;
+          case '5':
             e.preventDefault();
             setActiveSection('agents');
             break;
@@ -417,6 +446,21 @@ export default function MarketingCommandCenter() {
       )
     );
   }, [contentItems]);
+
+  // Post to LinkedIn
+  const handlePostToLinkedIn = useCallback(async (id: string) => {
+    const item = contentItems.find(i => i.id === id);
+    if (!item) return;
+
+    const result = await linkedin.postToLinkedIn(item);
+    if (result.success) {
+      setContentItems(prev =>
+        prev.map(i =>
+          i.id === id ? { ...i, posted: true, postedAt: new Date().toISOString() } : i
+        )
+      );
+    }
+  }, [contentItems, linkedin]);
 
   // Save performance metrics
   const handleSavePerformance = useCallback((itemId: string, metrics: PerformanceMetrics) => {
@@ -522,109 +566,6 @@ export default function MarketingCommandCenter() {
     ? itemsWithPerformance.reduce((sum, item) => sum + (item.performance?.engagementRate || 0), 0) / itemsWithPerformance.length
     : 0;
 
-  // Generate week with AI
-  const generateWeek = useCallback(async () => {
-    if (isGenerating) return;
-
-    setIsGenerating(true);
-    setGenerationStatus('Fetching viral formulas from top creators...');
-
-    try {
-      // Get viral formulas from YouTube creators
-      let viralFormulas: ViralFormula[] = [];
-
-      if (settings.youtubeApiKey && settings.creators.length > 0) {
-        try {
-          const allVideos: YouTubeVideo[] = [];
-          for (const creator of settings.creators) {
-            setGenerationStatus(`📺 Analyzing ${creator.name}...`);
-            const videos = await fetchChannelVideos(creator.channelId, { maxResultsPerChannel: 3 });
-            allVideos.push(...videos);
-            console.log(`✅ Fetched ${videos.length} videos from ${creator.name}:`, videos.map(v => v.title));
-          }
-          viralFormulas = allVideos.map(v => ({
-            creator: v.channelTitle,
-            formula: v.title,
-            title: v.title,
-          }));
-
-          // Show what we found
-          if (viralFormulas.length > 0) {
-            setExtractedFormulas(viralFormulas);
-            setShowFormulasPanel(true);
-            setGenerationStatus(`🔥 Found ${viralFormulas.length} viral formulas from ${settings.creators.length} creators!`);
-            console.log('📊 Viral Formulas Extracted:', viralFormulas);
-            await new Promise(r => setTimeout(r, 2000)); // Let user see the formulas
-          }
-        } catch (ytError) {
-          console.warn('YouTube API error, using default formulas:', ytError);
-          setGenerationStatus('⚠️ YouTube API error - using default viral formulas...');
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      } else {
-        setGenerationStatus('ℹ️ No YouTube API key or creators - using default viral formulas...');
-        await new Promise(r => setTimeout(r, 1000));
-      }
-
-      setGenerationStatus(`🤖 Generating ${viralFormulas.length > 0 ? 'content inspired by ' + viralFormulas.length + ' viral videos' : 'content with default formulas'}...`);
-
-      // Map platform settings to API format
-      const platformMap: Record<Platform, string> = {
-        tiktok: 'tiktok',
-        shorts: 'youtube_shorts',
-        reels: 'instagram_reels',
-        facebook: 'facebook',
-        linkedin: 'linkedin',
-        snapchat: 'snapchat',
-        ytlong: 'youtube_long',
-      };
-
-      const response = await generateWeeklyContent({
-        viralFormulas: viralFormulas.length > 0 ? viralFormulas : undefined,
-        subjects: settings.subjects,
-        examLevels: settings.levels.length > 0 ? settings.levels : ['GCSE'],
-        platforms: settings.platforms.map(p => platformMap[p] || p) as any[],
-      });
-
-      setGenerationStatus('Adding content to schedule...');
-
-      // Map response to content items
-      const newItems: ContentItem[] = response.weeklyContent.map((item, idx) => ({
-        id: generateId(),
-        day: item.day || DAYS[idx % 7],
-        time: item.time || '9:00 AM',
-        platform: (Object.entries(platformMap).find(([, v]) => v === item.platform)?.[0] || item.platform) as Platform,
-        hook: item.hook,
-        caption: item.caption || '',
-        hashtags: item.hashtags || [],
-        topic: item.topic || item.subject,
-        subject: item.subject,
-        level: item.level || settings.levels[0] || 'GCSE',
-        pillar: item.pillar as Pillar || 'teach',
-        filmed: false,
-        posted: false,
-      }));
-
-      setContentItems(prev => [...prev, ...newItems]);
-      setGenerationStatus(`✅ Generated ${newItems.length} content items!`);
-
-      // Hide formulas panel after showing success
-      setTimeout(() => {
-        setShowFormulasPanel(false);
-        setGenerationStatus('');
-      }, 3000);
-    } catch (error) {
-      console.error('Generation error:', error);
-      setGenerationStatus(`❌ Error: ${error instanceof Error ? error.message : 'Generation failed'}`);
-      setTimeout(() => {
-        setGenerationStatus('');
-        setShowFormulasPanel(false);
-      }, 5000);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [isGenerating, settings]);
-
   // Platform icon helper
   const getPlatformIcon = (platform: Platform) => {
     const iconMap: Record<Platform, string> = {
@@ -635,6 +576,8 @@ export default function MarketingCommandCenter() {
       linkedin: 'LI',
       snapchat: 'SC',
       ytlong: 'YT',
+      reddit: 'RD',
+      mumsnet: 'MN',
     };
     return iconMap[platform];
   };
@@ -643,9 +586,10 @@ export default function MarketingCommandCenter() {
   const navItems = [
     { id: 'home' as const, label: 'Home', icon: Home, shortcut: '0' },
     { id: 'week' as const, label: 'Week', icon: Calendar, shortcut: '1' },
-    { id: 'film' as const, label: 'Film', icon: Video, shortcut: '2' },
-    { id: 'post' as const, label: 'Post', icon: Send, shortcut: '3' },
-    { id: 'agents' as const, label: 'Agents', icon: Bot, shortcut: '4' },
+    { id: 'shotlist' as const, label: 'Shot List', icon: Film, shortcut: '2' },
+    { id: 'textqueue' as const, label: 'Text Queue', icon: FileText, shortcut: '3' },
+    { id: 'post' as const, label: 'Post', icon: Send, shortcut: '4' },
+    { id: 'agents' as const, label: 'Agents', icon: Bot, shortcut: '5' },
   ];
 
   return (
@@ -762,13 +706,8 @@ export default function MarketingCommandCenter() {
         <header className="h-14 px-6 flex items-center justify-between bg-white border-b border-[#e5e7eb]">
           <div className="flex items-center gap-4">
             <h1 className="text-[15px] font-semibold text-[#1a1a1a] capitalize">
-              {activeSection === 'home' ? 'Dashboard' : activeSection === 'week' ? 'Weekly Schedule' : activeSection === 'film' ? 'To Film' : activeSection === 'post' ? 'To Post' : 'AI Agents'}
+              {activeSection === 'home' ? 'Dashboard' : activeSection === 'week' ? 'Weekly Schedule' : activeSection === 'shotlist' ? 'Shot List' : activeSection === 'textqueue' ? 'Text Queue' : activeSection === 'post' ? 'To Post' : 'AI Agents'}
             </h1>
-            {generationStatus && (
-              <span className="text-[12px] text-[#6b7280] animate-pulse">
-                {generationStatus}
-              </span>
-            )}
             {calendarSyncStatus.type && (
               <span className={`flex items-center gap-1.5 text-[12px] ${
                 calendarSyncStatus.type === 'success' ? 'text-emerald-600' :
@@ -780,6 +719,16 @@ export default function MarketingCommandCenter() {
                 {calendarSyncStatus.type === 'info' && <Loader2 size={14} className="animate-spin" />}
                 {calendarSyncStatus.message}
               </span>
+            )}
+            {linkedin.error && (
+              <button
+                onClick={linkedin.clearError}
+                className="flex items-center gap-1.5 text-[12px] text-red-600"
+              >
+                <AlertCircle size={14} />
+                {linkedin.error}
+                <X size={12} />
+              </button>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -938,14 +887,6 @@ export default function MarketingCommandCenter() {
                   <Target size={14} />
                   Analyze Gaps
                 </button>
-                <button
-                  onClick={generateWeek}
-                  disabled={isGenerating}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg text-[12px] font-medium transition-all shadow-sm hover:shadow"
-                >
-                  <Sparkles size={14} className={isGenerating ? 'animate-spin' : ''} />
-                  {isGenerating ? 'Generating...' : 'Generate Week'}
-                </button>
               </>
             )}
             {settings.batchDay && (
@@ -970,9 +911,14 @@ export default function MarketingCommandCenter() {
               proactiveResults={proactive.notifications}
               isAgentRunning={agents.isRunning}
               onNavigate={setActiveSection}
-              onGenerateWeek={generateWeek}
               onStartPipeline={(pipelineId) => agents.startPipeline(pipelineId)}
               onAnalyzeGaps={handleAnalyzeGaps}
+              goals={goals}
+              growthMetrics={growthMetrics}
+              accountability={accountability}
+              postingScore={postingScore}
+              onOpenCheckIn={() => setShowCheckIn(true)}
+              onOpenGoalSettings={() => setSettingsOpen(true)}
             />
           )}
 
@@ -1048,6 +994,9 @@ export default function MarketingCommandCenter() {
                         onDelete={() => deleteContentItem(item.id)}
                         onUpdate={(updates) => updateContentItem(item.id, updates)}
                         getPlatformIcon={getPlatformIcon}
+                        onPostToLinkedIn={() => handlePostToLinkedIn(item.id)}
+                        linkedinConnected={linkedin.isConnected}
+                        linkedinPosting={linkedin.isPosting}
                       />
                     ))
                   )}
@@ -1056,83 +1005,30 @@ export default function MarketingCommandCenter() {
             </div>
           )}
 
-          {/* FILM VIEW */}
-          {activeSection === 'film' && (
-            <div className="max-w-4xl mx-auto">
-              <div className="bg-white rounded-xl border border-[#e5e7eb] overflow-hidden">
-                {/* Header */}
-                <div className="px-5 py-4 border-b border-[#e5e7eb] flex items-center justify-between">
-                  <div>
-                    <h2 className="text-[14px] font-semibold text-[#1a1a1a]">Content to Film</h2>
-                    <p className="text-[12px] text-[#6b7280] mt-0.5">
-                      {getItemsToFilm().length} items need filming
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-lg text-[12px] text-amber-700 font-medium">
-                    <Video size={14} />
-                    {getItemsToFilm().length} remaining
-                  </div>
-                </div>
+          {/* SHOT LIST VIEW */}
+          {activeSection === 'shotlist' && (
+            <FilmView
+              items={contentItems}
+              batchDay={settings.batchDay || 'Saturday'}
+              onToggleFilmed={toggleFilmed}
+              onMarkAllDone={() => {
+                setContentItems(prev =>
+                  prev.map(item =>
+                    (item.contentType === 'video' || item.contentType === undefined) && !item.filmed
+                      ? { ...item, filmed: true }
+                      : item
+                  )
+                );
+              }}
+            />
+          )}
 
-                {/* Grouped by day */}
-                <div className="divide-y divide-[#e5e7eb]">
-                  {getItemsToFilm().length === 0 ? (
-                    <div className="py-16 text-center">
-                      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-emerald-50 flex items-center justify-center">
-                        <Check size={24} className="text-emerald-600" />
-                      </div>
-                      <div className="text-[#1a1a1a] font-medium text-[14px] mb-1">All caught up!</div>
-                      <div className="text-[#6b7280] text-[12px]">No content waiting to be filmed</div>
-                    </div>
-                  ) : (
-                    DAYS.map(day => {
-                      const dayItems = getItemsToFilm().filter(item => item.day === day);
-                      if (dayItems.length === 0) return null;
-
-                      return (
-                        <div key={day}>
-                          <div className="px-5 py-3 bg-[#fafafa] flex items-center justify-between">
-                            <span className="text-[12px] font-medium text-[#6b7280]">{day}</span>
-                            <span className="text-[11px] text-[#9ca3af]">{dayItems.length} items</span>
-                          </div>
-                          {dayItems.map(item => (
-                            <div
-                              key={item.id}
-                              className="px-5 py-4 flex items-center gap-4 hover:bg-[#fafafa] transition-colors"
-                            >
-                              <button
-                                onClick={() => toggleFilmed(item.id)}
-                                className="w-5 h-5 rounded border-2 border-[#d1d5db] flex items-center justify-center hover:border-[#211d1d] transition-colors"
-                              >
-                                {item.filmed && <Check size={12} className="text-[#211d1d]" />}
-                              </button>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[13px] text-[#1a1a1a] truncate">{item.hook}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                    item.platform === 'tiktok' ? 'bg-gradient-to-r from-pink-500 to-red-500 text-white' :
-                                    item.platform === 'shorts' ? 'bg-red-500 text-white' :
-                                    item.platform === 'reels' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' :
-                                    item.platform === 'facebook' ? 'bg-blue-600 text-white' :
-                                    item.platform === 'linkedin' ? 'bg-sky-700 text-white' :
-                                    item.platform === 'snapchat' ? 'bg-yellow-400 text-black' :
-                                    'bg-red-600 text-white'
-                                  }`}>
-                                    {PLATFORMS[item.platform]?.name || item.platform}
-                                  </span>
-                                  <span className="text-[10px] text-[#9ca3af]">{item.time}</span>
-                                  <span className="text-[10px] text-[#9ca3af]">{item.level} {item.topic}</span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
+          {/* TEXT QUEUE VIEW */}
+          {activeSection === 'textqueue' && (
+            <TextQueue
+              items={contentItems}
+              onTogglePosted={togglePosted}
+            />
           )}
 
           {/* POST VIEW */}
@@ -1144,7 +1040,7 @@ export default function MarketingCommandCenter() {
                   <div>
                     <h2 className="text-[14px] font-semibold text-[#1a1a1a]">Ready to Post</h2>
                     <p className="text-[12px] text-[#6b7280] mt-0.5">
-                      {getItemsToPost().length} filmed items ready to publish
+                      {getItemsToPost().length} items ready to publish
                     </p>
                   </div>
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-lg text-[12px] text-blue-700 font-medium">
@@ -1164,59 +1060,92 @@ export default function MarketingCommandCenter() {
                       <div className="text-[#6b7280] text-[12px]">Film some content first, then come back here</div>
                     </div>
                   ) : (
-                    getItemsToPost().map(item => (
-                      <div
-                        key={item.id}
-                        className="px-5 py-4 hover:bg-[#fafafa] transition-colors"
-                      >
-                        <div className="flex items-start gap-4">
-                          <button
-                            onClick={() => togglePosted(item.id)}
-                            className="mt-0.5 w-5 h-5 rounded border-2 border-[#d1d5db] flex items-center justify-center hover:border-[#211d1d] transition-colors"
-                          >
-                            {item.posted && <Check size={12} className="text-[#211d1d]" />}
-                          </button>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                item.platform === 'tiktok' ? 'bg-gradient-to-r from-pink-500 to-red-500 text-white' :
-                                item.platform === 'shorts' ? 'bg-red-500 text-white' :
-                                item.platform === 'reels' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' :
-                                item.platform === 'facebook' ? 'bg-blue-600 text-white' :
-                                item.platform === 'linkedin' ? 'bg-sky-700 text-white' :
-                                item.platform === 'snapchat' ? 'bg-yellow-400 text-black' :
-                                'bg-red-600 text-white'
-                              }`}>
-                                {PLATFORMS[item.platform]?.name || item.platform}
-                              </span>
-                              <span className="text-[10px] text-[#9ca3af]">{item.day} at {item.time}</span>
-                            </div>
-                            <p className="text-[13px] text-[#1a1a1a] mb-2">{item.hook}</p>
-                            {item.caption && (
-                              <p className="text-[12px] text-[#6b7280] mb-2">{item.caption}</p>
-                            )}
-                            {item.hashtags.length > 0 && (
-                              <div className="flex items-center gap-1 flex-wrap">
-                                <Hash size={12} className="text-[#9ca3af]" />
-                                {item.hashtags.map((tag, i) => (
-                                  <span key={i} className="text-[11px] text-[#211d1d]">#{tag}</span>
-                                ))}
-                              </div>
-                            )}
+                    getItemsToPost().map(item => {
+                      const isTextContent = item.contentType === 'text';
+                      return (
+                        <div
+                          key={item.id}
+                          className="px-5 py-4 hover:bg-[#fafafa] transition-colors"
+                        >
+                          <div className="flex items-start gap-4">
                             <button
-                              onClick={() => {
-                                const text = `${item.hook}\n\n${item.caption}\n\n${item.hashtags.map(t => `#${t}`).join(' ')}`;
-                                navigator.clipboard.writeText(text);
-                              }}
-                              className="mt-3 flex items-center gap-1.5 text-[11px] text-[#6b7280] hover:text-[#211d1d] transition-colors"
+                              onClick={() => togglePosted(item.id)}
+                              className="mt-0.5 w-5 h-5 rounded border-2 border-[#d1d5db] flex items-center justify-center hover:border-[#211d1d] transition-colors"
                             >
-                              <Copy size={12} />
-                              Copy to clipboard
+                              {item.posted && <Check size={12} className="text-[#211d1d]" />}
                             </button>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  item.platform === 'tiktok' ? 'bg-gradient-to-r from-pink-500 to-red-500 text-white' :
+                                  item.platform === 'shorts' ? 'bg-red-500 text-white' :
+                                  item.platform === 'reels' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' :
+                                  item.platform === 'facebook' ? 'bg-blue-600 text-white' :
+                                  item.platform === 'linkedin' ? 'bg-sky-700 text-white' :
+                                  item.platform === 'snapchat' ? 'bg-yellow-400 text-black' :
+                                  item.platform === 'reddit' ? 'bg-orange-500 text-white' :
+                                  item.platform === 'mumsnet' ? 'bg-teal-600 text-white' :
+                                  'bg-red-600 text-white'
+                                }`}>
+                                  {PLATFORMS[item.platform]?.name || item.platform}
+                                </span>
+                                {isTextContent && (
+                                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Text</span>
+                                )}
+                                <span className="text-[10px] text-[#9ca3af]">{item.day} at {item.time}</span>
+                              </div>
+                              <p className="text-[13px] text-[#1a1a1a] mb-2">{item.hook}</p>
+                              {/* Text content: show body */}
+                              {isTextContent && item.body && (
+                                <div className="bg-[#f9fafb] rounded-lg p-3 text-[12px] whitespace-pre-line text-[#374151] mb-2 max-h-32 overflow-y-auto">
+                                  {item.body}
+                                </div>
+                              )}
+                              {/* Video content: show caption + hashtags */}
+                              {!isTextContent && item.caption && (
+                                <p className="text-[12px] text-[#6b7280] mb-2">{item.caption}</p>
+                              )}
+                              {!isTextContent && item.hashtags.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <Hash size={12} className="text-[#9ca3af]" />
+                                  {item.hashtags.map((tag, i) => (
+                                    <span key={i} className="text-[11px] text-[#211d1d]">#{tag}</span>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="mt-3 flex items-center gap-4">
+                                <button
+                                  onClick={() => {
+                                    const text = isTextContent
+                                      ? `${item.hook}\n\n${item.body ?? ''}`
+                                      : `${item.hook}\n\n${item.caption}\n\n${item.hashtags.map(t => `#${t}`).join(' ')}`;
+                                    navigator.clipboard.writeText(text.trim());
+                                  }}
+                                  className="flex items-center gap-1.5 text-[11px] text-[#6b7280] hover:text-[#211d1d] transition-colors"
+                                >
+                                  <Copy size={12} />
+                                  Copy to clipboard
+                                </button>
+                                {item.platform === 'linkedin' && linkedin.isConnected && !item.posted && (
+                                  <button
+                                    onClick={() => handlePostToLinkedIn(item.id)}
+                                    disabled={linkedin.isPosting}
+                                    className="flex items-center gap-1.5 text-[11px] font-medium text-[#0a66c2] hover:text-[#004182] transition-colors disabled:opacity-50"
+                                  >
+                                    {linkedin.isPosting ? (
+                                      <Loader2 size={12} className="animate-spin" />
+                                    ) : (
+                                      <Linkedin size={12} />
+                                    )}
+                                    {linkedin.isPosting ? 'Posting...' : 'Post to LinkedIn'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1247,6 +1176,11 @@ export default function MarketingCommandCenter() {
         calendarConnected={calendarConnected}
         onCalendarConnect={calendarLogin}
         onCalendarDisconnect={calendarDisconnect}
+        linkedinConnected={linkedin.isConnected}
+        onLinkedInConnect={linkedin.connect}
+        onLinkedInDisconnect={linkedin.disconnect}
+        goals={goals}
+        onSaveGoals={updateGoals}
       />
 
       {/* Performance Input Modal */}
@@ -1265,43 +1199,6 @@ export default function MarketingCommandCenter() {
           analysis={gapAnalysis}
           onFillGap={handleFillGap}
         />
-      )}
-
-      {/* Viral Formulas Panel - Shows extracted YouTube formulas */}
-      {showFormulasPanel && extractedFormulas.length > 0 && (
-        <div className="fixed bottom-6 right-6 w-96 bg-white rounded-xl border border-[#e5e7eb] shadow-2xl z-50 overflow-hidden">
-          <div className="px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">📺</span>
-              <span className="font-semibold text-[13px]">Viral Formulas Extracted</span>
-            </div>
-            <button
-              onClick={() => setShowFormulasPanel(false)}
-              className="p-1 hover:bg-white/20 rounded transition-colors"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {extractedFormulas.slice(0, 10).map((formula, idx) => (
-              <div key={idx} className="px-4 py-3 border-b border-[#e5e7eb] last:border-b-0 hover:bg-[#fafafa]">
-                <div className="flex items-start gap-2">
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-600 shrink-0">
-                    {formula.creator?.slice(0, 12)}
-                  </span>
-                </div>
-                <p className="text-[12px] text-[#1a1a1a] mt-1.5 leading-relaxed">
-                  "{formula.title || formula.formula}"
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="px-4 py-2 bg-[#fafafa] border-t border-[#e5e7eb]">
-            <p className="text-[10px] text-[#6b7280]">
-              ✨ Claude AI is adapting these viral patterns to your education niche...
-            </p>
-          </div>
-        </div>
       )}
 
       {/* Gap Fill Modal - QuickAddButton pre-filled with gap values */}
@@ -1328,6 +1225,34 @@ export default function MarketingCommandCenter() {
             onCancel={agents.cancelRun}
           />
         </div>
+      )}
+
+      {/* Weekly Check-In Modal */}
+      {showCheckIn && (
+        <WeeklyCheckIn
+          goals={goals}
+          lastSnapshot={snapshots.length > 0 ? snapshots[snapshots.length - 1] : null}
+          contentItems={contentItems}
+          onSubmit={(snapshot) => {
+            addSnapshot(snapshot);
+            // Also update platform goals' current followers from snapshot data
+            const updatedGoals = {
+              ...goals,
+              currentSubscribers: snapshot.subscribers,
+              platformGoals: goals.platformGoals.map(pg => ({
+                ...pg,
+                currentFollowers: snapshot.followers[pg.platform] ?? pg.currentFollowers,
+              })),
+              updatedAt: new Date().toISOString(),
+            };
+            updateGoals(updatedGoals);
+            setShowCheckIn(false);
+          }}
+          onDismiss={() => {
+            dismissCheckIn();
+            setShowCheckIn(false);
+          }}
+        />
       )}
 
       {/* Agent Results Modal - shown when a run completes */}
@@ -1389,10 +1314,12 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
   const handleAdd = () => {
     if (!hook.trim()) return;
 
+    const itemContentType = (PLATFORM_CONTENT_TYPES[platform]?.[0] ?? 'video') as ContentItem['contentType'];
     onAdd({
       day,
       time,
       platform,
+      contentType: itemContentType,
       hook: hook.trim(),
       caption: '',
       hashtags: [],
@@ -1400,7 +1327,7 @@ function GapFillModal({ gap, settings, onAdd, onClose }: GapFillModalProps) {
       subject,
       level,
       pillar,
-      filmed: false,
+      filmed: itemContentType === 'text',
       posted: false,
     });
   };
@@ -1596,10 +1523,12 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
   const handleAdd = () => {
     if (!hook.trim()) return;
 
+    const itemContentType = (PLATFORM_CONTENT_TYPES[platform]?.[0] ?? 'video') as ContentItem['contentType'];
     onAdd({
       day,
       time,
       platform,
+      contentType: itemContentType,
       hook: hook.trim(),
       caption: '',
       hashtags: [],
@@ -1607,7 +1536,7 @@ function QuickAddButton({ day, settings, onAdd, variant = 'default' }: QuickAddB
       subject,
       level,
       pillar,
-      filmed: false,
+      filmed: itemContentType === 'text',
       posted: false,
     });
 
@@ -1788,6 +1717,9 @@ interface ContentItemRowProps {
   onDelete: () => void;
   onUpdate: (updates: Partial<ContentItem>) => void;
   getPlatformIcon: (platform: Platform) => string;
+  onPostToLinkedIn?: () => void;
+  linkedinConnected?: boolean;
+  linkedinPosting?: boolean;
 }
 
 function ContentItemRow({
@@ -1799,6 +1731,9 @@ function ContentItemRow({
   onDelete,
   onUpdate,
   getPlatformIcon,
+  onPostToLinkedIn,
+  linkedinConnected,
+  linkedinPosting,
 }: ContentItemRowProps) {
   const [editingCaption, setEditingCaption] = useState(false);
   const [caption, setCaption] = useState(item.caption);
@@ -1970,6 +1905,20 @@ function ContentItemRow({
                 <Copy size={12} />
                 Copy all
               </button>
+              {item.platform === 'linkedin' && linkedinConnected && !item.posted && onPostToLinkedIn && (
+                <button
+                  onClick={onPostToLinkedIn}
+                  disabled={linkedinPosting}
+                  className="flex items-center gap-1.5 text-[11px] font-medium text-[#0a66c2] hover:text-[#004182] transition-colors disabled:opacity-50"
+                >
+                  {linkedinPosting ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Linkedin size={12} />
+                  )}
+                  {linkedinPosting ? 'Posting...' : 'Post to LinkedIn'}
+                </button>
+              )}
               <button
                 onClick={onDelete}
                 className="flex items-center gap-1.5 text-[11px] text-[#6b7280] hover:text-red-500 transition-colors"

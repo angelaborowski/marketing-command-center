@@ -22,9 +22,11 @@ import {
   Bell,
   Video,
   Send,
+  Target,
+  Linkedin,
 } from 'lucide-react';
-import type { Settings as SettingsType, Platform, ExamLevel, CalendarSyncSettings } from '../types';
-import { PLATFORMS, DAYS, SUBJECTS, DEFAULT_SETTINGS, DEFAULT_CALENDAR_SETTINGS, STORAGE_KEYS } from '../types';
+import type { Settings as SettingsType, Platform, ExamLevel, CalendarSyncSettings, Goals } from '../types';
+import { PLATFORMS, DAYS, SUBJECTS, DEFAULT_SETTINGS, DEFAULT_CALENDAR_SETTINGS, DEFAULT_GOALS, STORAGE_KEYS } from '../types';
 
 interface SettingsProps {
   isOpen: boolean;
@@ -34,6 +36,11 @@ interface SettingsProps {
   calendarConnected?: boolean;
   onCalendarConnect?: () => void;
   onCalendarDisconnect?: () => void;
+  linkedinConnected?: boolean;
+  onLinkedInConnect?: () => void;
+  onLinkedInDisconnect?: () => void;
+  goals?: Goals;
+  onSaveGoals?: (goals: Goals) => void;
 }
 
 export default function Settings({
@@ -44,6 +51,11 @@ export default function Settings({
   calendarConnected = false,
   onCalendarConnect,
   onCalendarDisconnect,
+  linkedinConnected = false,
+  onLinkedInConnect,
+  onLinkedInDisconnect,
+  goals: externalGoals,
+  onSaveGoals,
 }: SettingsProps) {
   const [localSettings, setLocalSettings] = useState<SettingsType>(settings);
   const [newCreatorId, setNewCreatorId] = useState('');
@@ -51,11 +63,25 @@ export default function Settings({
   const [newSubject, setNewSubject] = useState('');
   const [showClaudeKey, setShowClaudeKey] = useState(false);
   const [showYoutubeKey, setShowYoutubeKey] = useState(false);
-  const [activeTab, setActiveTab] = useState<'api' | 'creators' | 'content' | 'schedule' | 'calendar'>('api');
+  const [activeTab, setActiveTab] = useState<'api' | 'creators' | 'content' | 'schedule' | 'calendar' | 'goals'>('api');
+
+  // Goals state: loaded from props or localStorage independently
+  const [localGoals, setLocalGoals] = useState<Goals>(() => {
+    if (externalGoals) return externalGoals;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.goals);
+      if (raw) return JSON.parse(raw) as Goals;
+    } catch { /* ignore */ }
+    return DEFAULT_GOALS;
+  });
 
   useEffect(() => {
     setLocalSettings(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (externalGoals) setLocalGoals(externalGoals);
+  }, [externalGoals]);
 
   // Initialize calendar sync settings if not present
   useEffect(() => {
@@ -70,6 +96,12 @@ export default function Settings({
   const handleSave = () => {
     localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(localSettings));
     onSave(localSettings);
+
+    // Persist goals independently
+    const goalsToSave = { ...localGoals, updatedAt: new Date().toISOString() };
+    localStorage.setItem(STORAGE_KEYS.goals, JSON.stringify(goalsToSave));
+    if (onSaveGoals) onSaveGoals(goalsToSave);
+
     onClose();
   };
 
@@ -155,6 +187,7 @@ export default function Settings({
     { id: 'content' as const, label: 'Content', icon: Layout },
     { id: 'schedule' as const, label: 'Schedule', icon: Calendar },
     { id: 'calendar' as const, label: 'Calendar', icon: CalendarSync },
+    { id: 'goals' as const, label: 'Goals', icon: Target },
   ];
 
   return (
@@ -712,6 +745,284 @@ export default function Settings({
                   </div>
                 </div>
               )}
+
+              {/* LinkedIn Connection */}
+              <div className="pt-4 border-t border-gray-100">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-3">
+                  <Linkedin size={16} className="text-[#0a66c2]" />
+                  LinkedIn Auto-Post
+                </label>
+
+                <div className={`p-4 rounded-lg border ${
+                  linkedinConnected
+                    ? 'bg-emerald-50 border-emerald-200'
+                    : 'bg-gray-50 border-gray-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {linkedinConnected ? (
+                        <CheckCircle size={20} className="text-emerald-600" />
+                      ) : (
+                        <XCircle size={20} className="text-gray-400" />
+                      )}
+                      <div>
+                        <p className={`text-sm font-medium ${
+                          linkedinConnected ? 'text-emerald-900' : 'text-gray-700'
+                        }`}>
+                          {linkedinConnected ? 'Connected to LinkedIn' : 'Not connected'}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {linkedinConnected
+                            ? 'You can auto-post LinkedIn content directly from here'
+                            : 'Connect to post content directly to LinkedIn'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {linkedinConnected ? (
+                      <button
+                        onClick={onLinkedInDisconnect}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                      >
+                        <LogOut size={16} />
+                        Disconnect
+                      </button>
+                    ) : (
+                      <button
+                        onClick={onLinkedInConnect}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#0a66c2] hover:bg-[#004182] text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        <LogIn size={16} />
+                        Connect
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {!linkedinConnected && (
+                  <div className="mt-3 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-blue-100 rounded-lg">
+                        <Linkedin size={18} className="text-[#0a66c2]" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium text-blue-900">
+                          Post directly to LinkedIn
+                        </h4>
+                        <p className="text-xs text-blue-700 mt-1">
+                          Connect your LinkedIn account to auto-post content with one click. Requires a LinkedIn Developer App with the "Share on LinkedIn" product enabled.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Goals Tab */}
+          {activeTab === 'goals' && (
+            <div className="space-y-8">
+              {/* Subscriber Target */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-3">
+                  <Target size={16} className="text-gray-400" />
+                  Subscriber Target
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[11px] text-[#6b7280] uppercase tracking-wider font-medium mb-1.5 block">
+                      Target Subscribers
+                    </label>
+                    <input
+                      type="number"
+                      value={localGoals.subscriberTarget}
+                      onChange={e =>
+                        setLocalGoals(prev => ({
+                          ...prev,
+                          subscriberTarget: Math.max(0, parseInt(e.target.value) || 0),
+                        }))
+                      }
+                      min="0"
+                      className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-[#6b7280] uppercase tracking-wider font-medium mb-1.5 block">
+                      Current Subscribers
+                    </label>
+                    <input
+                      type="number"
+                      value={localGoals.currentSubscribers}
+                      onChange={e =>
+                        setLocalGoals(prev => ({
+                          ...prev,
+                          currentSubscribers: Math.max(0, parseInt(e.target.value) || 0),
+                        }))
+                      }
+                      min="0"
+                      className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Per-Platform Goals */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-3 block">
+                  Platform Growth Targets
+                </label>
+                <p className="text-xs text-gray-500 mb-4">
+                  Set follower targets and deadlines for each active platform
+                </p>
+                <div className="space-y-3">
+                  {localSettings.platforms.map(platform => {
+                    const pg = localGoals.platformGoals.find(g => g.platform === platform);
+                    const currentFollowers = pg?.currentFollowers ?? 0;
+                    const targetFollowers = pg?.targetFollowers ?? 0;
+                    const targetDate = pg?.targetDate ?? '';
+
+                    const updatePlatformGoal = (field: string, value: number | string) => {
+                      setLocalGoals(prev => {
+                        const existing = prev.platformGoals.find(g => g.platform === platform);
+                        if (existing) {
+                          return {
+                            ...prev,
+                            platformGoals: prev.platformGoals.map(g =>
+                              g.platform === platform ? { ...g, [field]: value } : g
+                            ),
+                          };
+                        }
+                        return {
+                          ...prev,
+                          platformGoals: [
+                            ...prev.platformGoals,
+                            {
+                              platform,
+                              currentFollowers: field === 'currentFollowers' ? (value as number) : 0,
+                              targetFollowers: field === 'targetFollowers' ? (value as number) : 0,
+                              targetDate: field === 'targetDate' ? (value as string) : '',
+                            },
+                          ],
+                        };
+                      });
+                    };
+
+                    return (
+                      <div
+                        key={platform}
+                        className="p-4 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg"
+                      >
+                        <div className="text-[13px] font-medium text-gray-900 mb-3">
+                          {PLATFORMS[platform].name}
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="text-[11px] text-[#6b7280] uppercase tracking-wider font-medium mb-1.5 block">
+                              Current
+                            </label>
+                            <input
+                              type="number"
+                              value={currentFollowers}
+                              onChange={e =>
+                                updatePlatformGoal('currentFollowers', Math.max(0, parseInt(e.target.value) || 0))
+                              }
+                              min="0"
+                              className="w-full px-3 py-2 bg-white border border-[#e5e7eb] rounded-lg text-[13px] text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] text-[#6b7280] uppercase tracking-wider font-medium mb-1.5 block">
+                              Target
+                            </label>
+                            <input
+                              type="number"
+                              value={targetFollowers}
+                              onChange={e =>
+                                updatePlatformGoal('targetFollowers', Math.max(0, parseInt(e.target.value) || 0))
+                              }
+                              min="0"
+                              className="w-full px-3 py-2 bg-white border border-[#e5e7eb] rounded-lg text-[13px] text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[11px] text-[#6b7280] uppercase tracking-wider font-medium mb-1.5 block">
+                              By Date
+                            </label>
+                            <input
+                              type="date"
+                              value={targetDate}
+                              onChange={e =>
+                                updatePlatformGoal('targetDate', e.target.value)
+                              }
+                              className="w-full px-3 py-2 bg-white border border-[#e5e7eb] rounded-lg text-[13px] text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Weekly Posting Targets */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-3 block">
+                  Weekly Posting Targets
+                </label>
+                <p className="text-xs text-gray-500 mb-4">
+                  How many posts per week on each platform
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {localSettings.platforms.map(platform => {
+                    const currentTarget = localGoals.postingTargets[platform] ?? 0;
+                    return (
+                      <div key={platform}>
+                        <label className="text-[11px] text-[#6b7280] uppercase tracking-wider font-medium mb-1.5 block">
+                          {PLATFORMS[platform].name}
+                        </label>
+                        <input
+                          type="number"
+                          value={currentTarget}
+                          onChange={e =>
+                            setLocalGoals(prev => ({
+                              ...prev,
+                              postingTargets: {
+                                ...prev.postingTargets,
+                                [platform]: Math.max(0, parseInt(e.target.value) || 0),
+                              },
+                            }))
+                          }
+                          min="0"
+                          className="w-full px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Batch Size */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-3 block">
+                  Batch Size
+                </label>
+                <p className="text-xs text-gray-500 mb-4">
+                  Number of content items to generate per batch
+                </p>
+                <input
+                  type="number"
+                  value={localSettings.batchSize}
+                  onChange={e =>
+                    setLocalSettings(prev => ({
+                      ...prev,
+                      batchSize: Math.max(1, parseInt(e.target.value) || 40),
+                    }))
+                  }
+                  min="1"
+                  className="w-32 px-3 py-2.5 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-[13px] text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                />
+              </div>
             </div>
           )}
         </div>
