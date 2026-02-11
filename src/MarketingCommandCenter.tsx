@@ -452,7 +452,10 @@ export default function MarketingCommandCenter() {
     const item = contentItems.find(i => i.id === id);
     if (!item) return;
 
-    const result = await linkedin.postToLinkedIn(item);
+    const result = await linkedin.postToLinkedIn(item, {
+      postTarget: settings.linkedinPostTarget || 'personal',
+      orgId: settings.linkedinOrgId,
+    });
     if (result.success) {
       setContentItems(prev =>
         prev.map(i =>
@@ -460,7 +463,7 @@ export default function MarketingCommandCenter() {
         )
       );
     }
-  }, [contentItems, linkedin]);
+  }, [contentItems, linkedin, settings.linkedinPostTarget, settings.linkedinOrgId]);
 
   // Save performance metrics
   const handleSavePerformance = useCallback((itemId: string, metrics: PerformanceMetrics) => {

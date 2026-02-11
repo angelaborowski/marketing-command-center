@@ -26,7 +26,7 @@ app.get('/api/linkedin/auth', (_req, res) => {
     response_type: 'code',
     client_id: LINKEDIN_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
-    scope: 'openid profile w_member_social',
+    scope: 'openid profile w_member_social w_organization_social',
     state: crypto.randomUUID(),
   });
 
@@ -97,16 +97,19 @@ app.get('/api/linkedin/callback', async (req, res) => {
 // POST /api/linkedin/post — Post content to LinkedIn
 // ============================================================================
 app.post('/api/linkedin/post', async (req, res) => {
-  const { accessToken, authorUrn, text } = req.body;
+  const { accessToken, authorUrn, authorType, text } = req.body;
 
   if (!accessToken || !authorUrn || !text) {
     res.status(400).json({ error: 'Missing required fields: accessToken, authorUrn, text' });
     return;
   }
 
+  // authorType: 'person' (personal profile) or 'organization' (company page)
+  const urnType = authorType === 'organization' ? 'organization' : 'person';
+
   try {
     const postBody = {
-      author: `urn:li:person:${authorUrn}`,
+      author: `urn:li:${urnType}:${authorUrn}`,
       lifecycleState: 'PUBLISHED',
       specificContent: {
         'com.linkedin.ugc.ShareContent': {

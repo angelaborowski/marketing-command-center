@@ -72,12 +72,23 @@ export function useLinkedIn() {
     setState({ isConnected: false, isPosting: false, error: null });
   }, []);
 
-  const postToLinkedIn = useCallback(async (item: ContentItem): Promise<PostResult> => {
+  const postToLinkedIn = useCallback(async (
+    item: ContentItem,
+    options?: { postTarget?: 'personal' | 'company'; orgId?: string }
+  ): Promise<PostResult> => {
     const accessToken = localStorage.getItem(STORAGE_KEYS.linkedinToken);
-    const authorUrn = localStorage.getItem(STORAGE_KEYS.linkedinSub);
+    const personUrn = localStorage.getItem(STORAGE_KEYS.linkedinSub);
 
-    if (!accessToken || !authorUrn) {
+    if (!accessToken || !personUrn) {
       return { success: false, error: 'Not connected to LinkedIn' };
+    }
+
+    const postTarget = options?.postTarget || 'personal';
+    const authorUrn = postTarget === 'company' ? options?.orgId : personUrn;
+    const authorType = postTarget === 'company' ? 'organization' : 'person';
+
+    if (postTarget === 'company' && !authorUrn) {
+      return { success: false, error: 'Company Organization ID not set. Add it in Settings.' };
     }
 
     setState(s => ({ ...s, isPosting: true, error: null }));
@@ -93,7 +104,7 @@ export function useLinkedIn() {
       const response = await fetch('/api/linkedin/post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken, authorUrn, text }),
+        body: JSON.stringify({ accessToken, authorUrn, authorType, text }),
       });
 
       if (response.status === 401) {

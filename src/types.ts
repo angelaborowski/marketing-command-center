@@ -231,6 +231,8 @@ export interface Settings {
   calendarSync?: CalendarSyncSettings;
   // LinkedIn
   linkedinClientId?: string;
+  linkedinOrgId?: string;
+  linkedinPostTarget?: 'personal' | 'company';
 }
 
 // Default calendar sync settings

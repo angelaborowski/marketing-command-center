@@ -799,6 +799,56 @@ export default function Settings({
                   </div>
                 </div>
 
+                {linkedinConnected && (
+                  <div className="mt-4 space-y-4">
+                    {/* Post Target Toggle */}
+                    <div>
+                      <label className="text-xs text-gray-600 font-medium mb-2 block">Post as</label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setLocalSettings(prev => ({ ...prev, linkedinPostTarget: 'personal' }))}
+                          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border transition-all ${
+                            (localSettings.linkedinPostTarget || 'personal') === 'personal'
+                              ? 'bg-[#0a66c2]/10 border-[#0a66c2] text-[#0a66c2]'
+                              : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          Personal Profile
+                        </button>
+                        <button
+                          onClick={() => setLocalSettings(prev => ({ ...prev, linkedinPostTarget: 'company' }))}
+                          className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border transition-all ${
+                            localSettings.linkedinPostTarget === 'company'
+                              ? 'bg-[#0a66c2]/10 border-[#0a66c2] text-[#0a66c2]'
+                              : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          Company Page
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Organization ID - only for company page */}
+                    {localSettings.linkedinPostTarget === 'company' && (
+                      <div>
+                        <label className="text-xs text-gray-600 font-medium mb-2 block">
+                          Organization ID
+                        </label>
+                        <input
+                          type="text"
+                          value={localSettings.linkedinOrgId || ''}
+                          onChange={e => setLocalSettings(prev => ({ ...prev, linkedinOrgId: e.target.value.trim() }))}
+                          placeholder="e.g., 12345678"
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#0a66c2] focus:ring-2 focus:ring-[#0a66c2]/20 transition-all"
+                        />
+                        <p className="mt-1.5 text-xs text-gray-500">
+                          Find this in your LinkedIn company page URL: linkedin.com/company/<strong>12345678</strong>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {!linkedinConnected && (
                   <div className="mt-3 p-4 bg-blue-50 border border-blue-100 rounded-lg">
                     <div className="flex items-start gap-3">
