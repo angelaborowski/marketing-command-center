@@ -1,9 +1,13 @@
-import MarketingCommandCenter, { ErrorBoundary } from './MarketingCommandCenter'
+import MarketingCommandCenter from './MarketingCommandCenter'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import PasswordGate from './components/PasswordGate'
 
 function App() {
   return (
     <ErrorBoundary>
-      <MarketingCommandCenter />
+      <PasswordGate>
+        <MarketingCommandCenter />
+      </PasswordGate>
     </ErrorBoundary>
   )
 }

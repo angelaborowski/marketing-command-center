@@ -128,14 +128,14 @@ export const DEFAULT_GOALS: Goals = {
     { platform: 'reddit', currentFollowers: 0, targetFollowers: 500, targetDate: '' },
   ],
   postingTargets: {
-    tiktok: 5,
-    shorts: 3,
-    reels: 3,
-    facebook: 3,
-    ytlong: 1,
-    linkedin: 2,
-    reddit: 3,
-    mumsnet: 2,
+    tiktok: 21,
+    shorts: 21,
+    reels: 21,
+    facebook: 21,
+    ytlong: 7,
+    linkedin: 7,
+    reddit: 7,
+    mumsnet: 7,
   },
   updatedAt: new Date().toISOString(),
 };
@@ -283,8 +283,14 @@ export const PILLARS: PillarInfo[] = [
   { id: 'trending', name: 'Trend', desc: 'Viral formats' },
 ];
 
+// Navigation sections
+export type Section = 'home' | 'week' | 'shotlist' | 'textqueue' | 'post' | 'agents';
+
 // Days of the week
 export const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+
+// Default time slots
+export const TIME_SLOTS = ['9:00 AM', '12:00 PM', '3:00 PM', '6:00 PM', '9:00 PM'] as const;
 
 // Available subjects
 export const SUBJECTS = ['Biology', 'Chemistry', 'Physics', 'Maths', 'English', 'History', 'Geography'] as const;
@@ -335,16 +341,19 @@ export const DEFAULT_CREATORS: Creator[] = [
   { id: 'coryxkenshin', name: 'CoryxKenshin', channelId: 'UCiYcA0gJzg855iSKMrX3oHg' },
 ];
 
+// Safe env access — works in both Vite (browser) and Node.js (server)
+const _viteEnv: Record<string, string> = (import.meta as any).env ?? {};
+
 // Default settings
 export const DEFAULT_SETTINGS: Settings = {
-  claudeApiKey: import.meta.env.VITE_CLAUDE_API_KEY ?? '',
-  youtubeApiKey: import.meta.env.VITE_YOUTUBE_API_KEY ?? '',
+  claudeApiKey: _viteEnv.VITE_CLAUDE_API_KEY ?? '',
+  youtubeApiKey: _viteEnv.VITE_YOUTUBE_API_KEY ?? '',
   creators: DEFAULT_CREATORS,
-  platforms: ['tiktok', 'shorts', 'reels', 'facebook', 'reddit', 'mumsnet'],
+  platforms: ['tiktok', 'shorts', 'reels', 'facebook', 'linkedin', 'ytlong', 'reddit', 'mumsnet'],
   levels: ['GCSE', 'A-Level'],
   subjects: ['Biology', 'Chemistry', 'Physics', 'Maths'],
   batchDay: 'Friday',
-  batchSize: 40,
+  batchSize: 120,
 };
 
 // Storage keys for localStorage
