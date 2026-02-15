@@ -8,7 +8,6 @@
 }
 
 :root {
-  /* Superhuman-style light palette */
   --bg-primary: #fafafa;
   --bg-secondary: #ffffff;
   --bg-tertiary: #f3f4f6;
@@ -22,7 +21,6 @@
   --accent-hover: #352f2f;
   --accent-dim: rgba(33, 29, 29, 0.1);
   --card-shadow: rgba(0, 0, 0, 0.08);
-  --glow-color: rgba(33, 29, 29, 0.25);
 }
 
 * {
@@ -49,7 +47,7 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
-/* Scrollbar styling - minimal and clean */
+/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -68,7 +66,7 @@ h1, h2, h3, h4, h5, h6 {
   background: #9ca3af;
 }
 
-/* Custom focus styles */
+/* Focus styles */
 *:focus {
   outline: none;
 }
@@ -124,16 +122,11 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Smooth transitions utility classes */
+/* Utility classes */
 .transition-smooth {
   transition: all 0.2s ease;
 }
 
-.transition-spring {
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* Card hover lift effect */
 .card-hover {
   transition: transform 0.2s ease,
               box-shadow 0.2s ease,
@@ -145,33 +138,6 @@ button:disabled {
   box-shadow: 0 4px 12px var(--card-shadow);
 }
 
-/* Status toggle animation */
-.status-pill {
-  transition: all 0.2s ease;
-}
-
-.status-pill:active {
-  transform: scale(0.95);
-}
-
-/* Expand/collapse animation */
-.expandable-content {
-  animation: expandIn 0.2s ease forwards;
-  transform-origin: top;
-}
-
-@keyframes expandIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Fade in animation for sections */
 .fade-in {
   animation: fadeIn 0.3s ease forwards;
 }
@@ -187,59 +153,15 @@ button:disabled {
   }
 }
 
-/* Stagger children animation */
-.stagger-children > * {
-  animation: fadeSlideIn 0.3s ease backwards;
-}
-
-.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 200ms; }
-.stagger-children > *:nth-child(7) { animation-delay: 240ms; }
-
-@keyframes fadeSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Checkmark pop animation */
-.check-pop {
-  animation: checkPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes checkPop {
-  0% {
-    transform: scale(0);
-  }
-  50% {
-    transform: scale(1.2);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* Progress bar smooth fill */
 .progress-fill {
   transition: width 0.4s ease;
 }
 
-/* Sidebar nav item hover */
 .nav-item {
   transition: all 0.15s ease;
   position: relative;
 }
 
-/* Smooth icon rotation */
 .icon-rotate {
   transition: transform 0.2s ease;
 }
@@ -248,35 +170,16 @@ button:disabled {
   transform: rotate(90deg);
 }
 
-/* Glow effect on hover for primary buttons */
-.glow-hover {
-  transition: all 0.2s ease;
-}
-
-.glow-hover:hover {
-  box-shadow: 0 0 16px var(--glow-color);
-}
-
-/* Platform dot status animation */
-.status-dot {
-  transition: all 0.2s ease;
-}
-
-/* Modal backdrop animation */
+/* Modal animations */
 @keyframes fadeInBackdrop {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .backdrop-animate {
   animation: fadeInBackdrop 0.15s ease forwards;
 }
 
-/* Modal content animation */
 @keyframes slideUpModal {
   from {
     opacity: 0;
@@ -290,111 +193,6 @@ button:disabled {
 
 .modal-animate {
   animation: slideUpModal 0.2s ease forwards;
-}
-
-/* Tooltip styles */
-.tooltip {
-  position: relative;
-}
-
-.tooltip::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%) translateY(-4px);
-  padding: 4px 8px;
-  background: var(--text-primary);
-  color: var(--bg-secondary);
-  font-size: 11px;
-  border-radius: 4px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-.tooltip:hover::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(-8px);
-}
-
-/* Keyboard shortcut badge */
-.kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-/* Empty state styling */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
-  text-align: center;
-}
-
-.empty-state-icon {
-  width: 48px;
-  height: 48px;
-  margin-bottom: 16px;
-  border-radius: 50%;
-  background: var(--bg-tertiary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-}
-
-/* Tag/badge styling */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 9999px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-}
-
-.tag-blue {
-  background: rgba(33, 29, 29, 0.1);
-  color: #211d1d;
-}
-
-.tag-green {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-}
-
-.tag-amber {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-}
-
-.tag-red {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-/* Divider styling */
-.divider {
-  height: 1px;
-  background: var(--border-subtle);
-  margin: 16px 0;
 }
 
 /* Text utilities */
@@ -423,4 +221,13 @@ button:disabled {
   .hide-desktop {
     display: none;
   }
+}
+
+/* Print styles for shot list */
+@media print {
+  aside, header, nav, .no-print { display: none !important; }
+  main { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
+  .shot-card { break-inside: avoid; page-break-inside: avoid; border: 1px solid #ccc !important; margin-bottom: 8px; }
+  .shot-card .shot-script { display: block !important; }
+  .shot-card button, .shot-card input[type="checkbox"] { display: none !important; }
 }

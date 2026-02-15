@@ -1,5 +1,18 @@
 import express from 'express';
 import cors from 'cors';
+import cron from 'node-cron';
+import { runContentPipeline } from './runPipeline.server';
+import {
+  listBatches,
+  loadBatch,
+  updateBatchItemStatus,
+  approveAllItems,
+  getApprovedItems,
+  loadServerSettings,
+  saveServerSettings,
+  appendCronLog,
+  getCronLog,
+} from './store';
 
 const app = express();
 const PORT = 3001;
@@ -14,8 +27,197 @@ const REDIRECT_URI = 'http://localhost:3001/api/linkedin/callback';
 const FRONTEND_URL = 'http://localhost:5173';
 
 // ============================================================================
-// GET /api/linkedin/auth — Redirect to LinkedIn OAuth consent screen
+// Cron Scheduling
 // ============================================================================
+
+let cronJob: cron.ScheduledTask | null = null;
+let pipelineRunning = false;
+
+function setupCron() {
+  if (cronJob) {
+    cronJob.stop();
+    cronJob = null;
+  }
+
+  const settings = loadServerSettings();
+  const schedule = settings.cronSchedule || '0 9 * * 5';
+
+  if (!cron.validate(schedule)) {
+    console.error(`[CRON] Invalid schedule expression: "${schedule}". Using default.`);
+    return;
+  }
+
+  cronJob = cron.schedule(schedule, async () => {
+    if (pipelineRunning) {
+      console.log('[CRON] Pipeline already running, skipping.');
+      return;
+    }
+
+    console.log('[CRON] Starting scheduled content generation...');
+    pipelineRunning = true;
+
+    try {
+      const batch = await runContentPipeline('cron');
+      console.log(`[CRON] Generated batch ${batch.id} with ${batch.items.length} items`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[CRON] Pipeline failed:', msg);
+    } finally {
+      pipelineRunning = false;
+    }
+  });
+
+  console.log(`[CRON] Content generation scheduled: "${schedule}"`);
+}
+
+setupCron();
+
+// ============================================================================
+// Content Batch Endpoints
+// ============================================================================
+
+// List all batches (metadata only)
+app.get('/api/content/batches', (_req, res) => {
+  try {
+    const batches = listBatches();
+    res.json({ batches });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Get a single batch with all items
+app.get('/api/content/batches/:batchId', (req, res) => {
+  try {
+    const batch = loadBatch(req.params.batchId);
+    if (!batch) {
+      res.status(404).json({ error: 'Batch not found' });
+      return;
+    }
+    res.json({ batch });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Manually trigger content generation
+app.post('/api/content/batches/generate', async (_req, res) => {
+  if (pipelineRunning) {
+    res.status(409).json({ error: 'Pipeline is already running. Please wait.' });
+    return;
+  }
+
+  pipelineRunning = true;
+  try {
+    const batch = await runContentPipeline('manual');
+    res.json({ batch });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  } finally {
+    pipelineRunning = false;
+  }
+});
+
+// Approve or reject a single item
+app.patch('/api/content/batches/:batchId/items/:tempId', (req, res) => {
+  const { status } = req.body;
+  if (status !== 'approved' && status !== 'rejected') {
+    res.status(400).json({ error: 'Status must be "approved" or "rejected"' });
+    return;
+  }
+
+  try {
+    const batch = updateBatchItemStatus(req.params.batchId, req.params.tempId, status);
+    if (!batch) {
+      res.status(404).json({ error: 'Batch or item not found' });
+      return;
+    }
+    res.json({ batch });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Approve all pending items in a batch
+app.patch('/api/content/batches/:batchId/approve-all', (req, res) => {
+  try {
+    const batch = approveAllItems(req.params.batchId);
+    if (!batch) {
+      res.status(404).json({ error: 'Batch not found' });
+      return;
+    }
+    res.json({ batch });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Get approved items as ContentItem[] (ready to merge into frontend)
+app.get('/api/content/batches/:batchId/approved', (req, res) => {
+  try {
+    const items = getApprovedItems(req.params.batchId);
+    res.json({ items });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ============================================================================
+// Server Settings Endpoints
+// ============================================================================
+
+app.get('/api/settings/server', (_req, res) => {
+  try {
+    const settings = loadServerSettings();
+    res.json({ settings });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+app.put('/api/settings/server', (req, res) => {
+  try {
+    const current = loadServerSettings();
+    const updated = { ...current, ...req.body };
+    saveServerSettings(updated);
+
+    // Restart cron if schedule changed
+    if (req.body.cronSchedule) {
+      setupCron();
+    }
+
+    res.json({ settings: updated });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ============================================================================
+// Cron Log Endpoint
+// ============================================================================
+
+app.get('/api/cron/log', (_req, res) => {
+  try {
+    const log = getCronLog();
+    res.json({ log });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ============================================================================
+// LinkedIn OAuth (existing)
+// ============================================================================
+
 app.get('/api/linkedin/auth', (_req, res) => {
   if (!LINKEDIN_CLIENT_ID) {
     res.status(500).json({ error: 'LINKEDIN_CLIENT_ID not configured' });
@@ -26,16 +228,13 @@ app.get('/api/linkedin/auth', (_req, res) => {
     response_type: 'code',
     client_id: LINKEDIN_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
-    scope: 'openid profile w_member_social w_organization_social',
+    scope: 'openid profile w_member_social',
     state: crypto.randomUUID(),
   });
 
   res.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params}`);
 });
 
-// ============================================================================
-// GET /api/linkedin/callback — Exchange auth code for access token
-// ============================================================================
 app.get('/api/linkedin/callback', async (req, res) => {
   const { code, error } = req.query;
 
@@ -45,7 +244,6 @@ app.get('/api/linkedin/callback', async (req, res) => {
   }
 
   try {
-    // Exchange code for access token
     const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -67,9 +265,8 @@ app.get('/api/linkedin/callback', async (req, res) => {
 
     const tokenData = await tokenResponse.json();
     const accessToken = tokenData.access_token;
-    const expiresIn = tokenData.expires_in; // seconds
+    const expiresIn = tokenData.expires_in;
 
-    // Get the user's LinkedIn profile to get their sub (person URN)
     const profileResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -80,7 +277,6 @@ app.get('/api/linkedin/callback', async (req, res) => {
       linkedinSub = profile.sub || '';
     }
 
-    // Redirect back to frontend with token in URL hash (not query params for security)
     const params = new URLSearchParams({
       linkedin_token: accessToken,
       linkedin_expires: expiresIn.toString(),
@@ -93,9 +289,6 @@ app.get('/api/linkedin/callback', async (req, res) => {
   }
 });
 
-// ============================================================================
-// POST /api/linkedin/post — Post content to LinkedIn
-// ============================================================================
 app.post('/api/linkedin/post', async (req, res) => {
   const { accessToken, authorUrn, authorType, text } = req.body;
 
@@ -104,7 +297,6 @@ app.post('/api/linkedin/post', async (req, res) => {
     return;
   }
 
-  // authorType: 'person' (personal profile) or 'organization' (company page)
   const urnType = authorType === 'organization' ? 'organization' : 'person';
 
   try {
@@ -153,9 +345,26 @@ app.post('/api/linkedin/post', async (req, res) => {
 // ============================================================================
 // Start server
 // ============================================================================
+
 app.listen(PORT, () => {
-  console.log(`LinkedIn API server running on http://localhost:${PORT}`);
+  console.log(`\n🚀 Marketing Command Center API running on http://localhost:${PORT}`);
+  console.log(`\nEndpoints:`);
+  console.log(`  GET    /api/content/batches              — List all batches`);
+  console.log(`  GET    /api/content/batches/:id          — Get batch details`);
+  console.log(`  POST   /api/content/batches/generate     — Trigger content generation`);
+  console.log(`  PATCH  /api/content/batches/:id/items/:t — Approve/reject item`);
+  console.log(`  PATCH  /api/content/batches/:id/approve-all — Approve all items`);
+  console.log(`  GET    /api/content/batches/:id/approved — Get approved items`);
+  console.log(`  GET    /api/settings/server              — Get server settings`);
+  console.log(`  PUT    /api/settings/server              — Update server settings`);
+  console.log(`  GET    /api/cron/log                     — View cron execution log`);
+  console.log(`  GET    /api/linkedin/auth                — LinkedIn OAuth`);
+  console.log(``);
+
   if (!LINKEDIN_CLIENT_ID || !LINKEDIN_CLIENT_SECRET) {
     console.warn('⚠ LINKEDIN_CLIENT_ID or LINKEDIN_CLIENT_SECRET not set in .env');
+  }
+  if (!process.env.CLAUDE_API_KEY) {
+    console.warn('⚠ CLAUDE_API_KEY not set in .env — content generation will fail');
   }
 });

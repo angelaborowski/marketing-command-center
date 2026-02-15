@@ -16,6 +16,9 @@ dist-ssr
 .env
 .env.local
 
+# Server data (generated batches, logs)
+server/data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
